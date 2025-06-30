@@ -1,0 +1,11 @@
+rapidfuzz 
+python-Levenshtein 
+opendatasets 
+pandas
+sentence-transformers 
+torch 
+pyspellchecker 
+keybert
+nltk
+PyQt5
+cachetools
