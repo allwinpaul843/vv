@@ -37,7 +37,7 @@ def filter_relevant_rows(df, string_columns, query, threshold=70):
     relevant_rows = df[df['max_match_score'] >= threshold].copy()
     relevant_rows.reset_index(drop=True, inplace=True)
 
-    relevant_rows.to_csv("relevant_rows.csv", index=False)  # Save to CSV for debugging
+    #relevant_rows.to_csv("relevant_rows.csv", index=False)  # Save to CSV for debugging
 
     return relevant_rows
 

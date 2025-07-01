@@ -90,6 +90,8 @@ Right now, there are product titles in a list data type (converted to string) - 
 - Do not include model numbers, years, storage sizes, or marketing terms like "Renewed" or "Latest".
 - Only keep relevant brand names, product type, and 1–2 key features. If the title is too long, remove less relevant details.
 - Only output the final list. Do not include explanations, numbering, or markdown.
+- Make sure the response ** starts with a opening square bracket `[` ends with a closing square bracket `]` ** — no incomplete lists.
+- I will parse your response using `ast.literal_eval()` — so it must be a valid Python list.
 
 Return the output **only as a Python list of strings**, like this: ["Samsung Electronics", "Samsung Phone", "Samsung TV"]
 No other text should be included.
@@ -103,7 +105,7 @@ based on the above example rewrite the following product title into a short sear
 
 # ===================== Remote Generation =====================
 def generate_query_remote(title, query=None):
-    api_key = "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"  # Replace with your actual key
+    api_key = "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"  # Replace with your actual key
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -125,10 +127,96 @@ def generate_query_remote(title, query=None):
     if response.status_code == 200:
         content = response.json()["choices"][0]["message"]["content"]
         try:
+            print(response.json()["choices"][0]["message"])
             return ast.literal_eval(content)
+        except Exception:
+            print("[Warning] ast.literal_eval failed. Trying safe repair...")
+            return safe_literal_eval(content)
+    else:
+        raise Exception(f"API Error {response.status_code}: {response.text}")
+    
+
+'''def safe_literal_eval(content):
+    """
+    Attempts to safely repair and parse the string response from LLM
+    when ast.literal_eval fails due to truncation or syntax issues.
+    """
+    import re
+
+    # Attempt to extract the first list-like structure from the content
+    match = re.search(r'(\[.*)', content.strip(), re.DOTALL)
+    if match:
+        partial = match.group(1)
+
+        # Repair: if the list is missing a closing bracket
+        if not partial.endswith("]"):
+            partial += "]"
+
+        try:
+            print(f"[Repairing] Attempting to parse: {partial}")
+            return ast.literal_eval(partial)
         except Exception as e:
-            print(f"Failed to parse response: {content}")
-            raise Exception("Non-parsable LLM output") from e
+            print(f"ast.literal_eval failed after repair: {e}")
+            return []
+
+    print("[Error] Could not find list structure in LLM output.")
+    return []
+
+'''
+def safe_literal_eval(content):
+    """
+    Attempts to safely parse and repair a possibly broken LLM output
+    into a valid Python list of strings.
+    Ensures:
+    - Starts with [ and ends with ]
+    - All items are quoted properly
+    - Removes broken or unterminated strings
+    """
+    import re
+
+    # Try to find the list structure
+    match = re.search(r'\[.*', content.strip(), re.DOTALL)
+    if not match:
+        print("[Error] Could not find list structure in LLM output.")
+        return []
+
+    partial = match.group(0).strip()
+
+    # Step 1: Ensure list starts with `[` and ends with `]`
+    if not partial.startswith("["):
+        partial = "[" + partial
+    if not partial.endswith("]"):
+        partial += "]"
+
+    # Step 2: Try basic parse
+    try:
+        return ast.literal_eval(partial)
+    except Exception as e:
+        print(f"[Repairing] Basic parse failed: {e}")
+
+    # Step 3: Try manual cleaning
+    # Extract everything between the outer brackets
+    try:
+        inside = re.search(r'\[(.*)\]', partial, re.DOTALL).group(1)
+    except:
+        print("[Error] Failed to extract contents inside brackets.")
+        return []
+
+    # Step 4: Split elements manually, assuming comma-separated
+    raw_items = inside.split(",")
+
+    cleaned_items = []
+    for item in raw_items:
+        item = item.strip()
+        # Match items that look like proper quoted strings
+        if re.match(r'^"(.*?)"$', item) or re.match(r"^'(.*?)'$", item):
+            cleaned_items.append(ast.literal_eval(item))  # unquote safely
+        else:
+            print(f"[Skipping] Invalid or unterminated string: {item}")
+
+    # Step 5: Return as valid list
+    return cleaned_items
+
 
 # ===================== Exact Match Cache DB =====================
 DB_FILE = "remote_generation_cache.sqlite"
@@ -202,13 +290,14 @@ def get_combined_suggestions(corrected_text, relevant_df, string_columns):
 
         if not improved:
             improved = generate_query_remote(suggestion_list, corrected_text.strip().lower())
-            if improved:
+            if improved and len(improved) > 0:
                 save_to_semantic_cache(semantic_conn, semantic_key, improved)
 
         semantic_conn.close()
-        save_to_cache(conn, stringified_list, corrected_text, json.dumps(improved))
+        if improved and len(improved) > 0:
+            save_to_cache(conn, stringified_list, corrected_text, json.dumps(improved))
 
-    end_time = time.time()
+    
 
     for improve in improved:
         if improve not in final_suggestions and improve.lower() != corrected_text.lower():
