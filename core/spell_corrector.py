@@ -93,12 +93,15 @@ def correct_query(query, vocab, token_freq, threshold=74):
     for token in original_tokens:
         
         if token in vocab:
+            
             corrected.append(token)  # Token is valid
+            
         else:
             
             # Use fuzzy match to find candidates above threshold
             candidates = [(w, score_cached_fuzz_ratio(token, w)) for w in vocab if score_cached_fuzz_ratio(token, w) >= threshold]
             
+            print(f"Candidates for '{token}': {candidates}")
             if len(candidates)> 0:
                 # Pick best based on score and frequency
                 best = sorted(candidates, key=lambda x: (-x[1], -token_freq[x[0]]))[0][0]
@@ -109,17 +112,24 @@ def correct_query(query, vocab, token_freq, threshold=74):
             
             pre_checked = precheck_with_spellchecker(token, vocab)
             if pre_checked:
+                print(token, "prechecked to", pre_checked)
                 corrected.append(pre_checked)
                 typo_found = True
                 continue
 
+            if token in exclude:
+                
+                corrected.append(token)  # Excluded token, keep original
+                continue
 
             candidates_soundex = [(w, score_cached_fuzz_ratio(token, w)) for w in vocab if(score_cached_fuzz_ratio(token, w) >= 65 and score_cached_fuzz_ratio(token, w) < 74 )]
-            
+            soundex_bool = False
             if candidates_soundex:
+                
                 # Pick best based on score and frequency
                 best_soundex = sorted(candidates, key=lambda x: (-x[1], -token_freq[x[0]]))
                 query_sdx=soundex(token)
+                
                 for word in best_soundex:
                       word=word[0]
                       if word in exclude:
@@ -127,12 +137,14 @@ def correct_query(query, vocab, token_freq, threshold=74):
                       if soundex(word) == query_sdx:
                           corrected.append(word)
                           typo_found = True
-                          continue
+                          soundex_bool = True
+                          break  # Found a good soundex match
 
+                if soundex_bool:
+                    continue
 
-
-            else:
+            if not soundex_bool:
+                
                 corrected.append(token)  # No good match, keep original
 
-   
-    return corrected, typo_found  # Return original, corrected, and flag 
+    return corrected, typo_found  # Return original, corrected, and flag

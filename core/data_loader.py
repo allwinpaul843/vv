@@ -3,7 +3,7 @@ import re
 
 # ===================== DATA LOAD & CLEAN =====================
 def load_data():
-    df1 = pd.read_csv("data/amazon-products.csv")  # Load Amazon product data
+    df1 = pd.read_csv("data/electronics_dataset_1000.csv")  # Load Amazon product data
     df2 = pd.read_csv("data/electronics.csv")  # Load electronics product data
 
     required_cols = ['title', 'categories', 'manufacturer', 'brand', 'category_code', 'brand01']  # Only keep the title column

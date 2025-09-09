@@ -1,15 +1,16 @@
 from rapidfuzz import fuzz
 from collections import Counter
-
+import pandas as pd
+import numpy as np
 # Define a simple cache
 cache = {}
 
 def cached_fuzz_ratio(query, text):
     key = (query, text)
     if key in cache:
-        return cache[text]
+        return cache[key]
     score = fuzz.partial_ratio(query, text)
-    cache[text] = score
+    cache[key] = score
     return score
 
 
@@ -19,11 +20,20 @@ def filter_relevant_rows(df, string_columns, query, threshold=70):
     query = query.lower()  # Normalize query
     df['max_match_score'] = 0  # Initialize score column
 
-
+    score_arrays = []  # To hold score arrays for each column
     # Apply fuzzy partial match for each column
     for col in string_columns:
-          scores = df[col + "_clean"].apply(lambda x: cached_fuzz_ratio(query, x))
-          df['max_match_score'] = df['max_match_score'].combine(scores, max)
+        scores = df[col + "_clean"].apply(lambda x: cached_fuzz_ratio(query, str(x)) if not pd.isna(x) else 0)
+        score_arrays.append(scores.values)
+
+    if score_arrays:
+        # Stack scores and calculate row-wise maximum
+        all_scores = np.vstack(score_arrays)
+        df['max_match_score'] = all_scores.max(axis=0)
+    else:
+        df['max_match_score'] = 0
+
+        #df['max_match_score'] = df['max_match_score'].combine(scores, max)
 
     '''
     # Apply fuzzy partial match for each column
@@ -63,6 +73,10 @@ def get_vocab(filtered_df, string_columns):
 
                 _token_cache[val] = tokens  # Save result for next time
                 all_tokens.extend(tokens)
+    negative_words = ['non','not', 'without', 'no', 'never', 'none', 'nothing', 'neither', 'nor', 'nobody', 'nowhere','exclude', 'avoid', 'skip', 'omit', 'disregard', 'ignore', 'reject', 'refuse', 'deny', 'abandon', 'discard', 'eliminate', 'remove','except', 'except for', 'apart from', 'aside from', 'besides', 'beyond', 'outside of', 'other than']
+    all_tokens.extend(['phone','iphone','phones','iphones'])
+    all_tokens.extend(negative_words)  # Include negative words as tokens
+    all_tokens.extend(string_columns)  # Include column names as tokens
 
     token_freq = Counter(all_tokens)
     
